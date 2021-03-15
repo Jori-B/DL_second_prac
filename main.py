@@ -34,6 +34,14 @@ def print_data_info(data_dir, nationalities):
             len(tf.io.gfile.listdir(str(data_dir/nationalities[i]))))
     print('Example file tensor:', filenames[0])
 
+#Create the data set
+def preprocess_dataset(files):
+    files_ds = tf.data.Dataset.from_tensor_slices(files)
+    output_ds = files_ds.map(get_waveform_and_label, num_parallel_calls = AUTOTUNE)
+    output_ds = output_ds.map(
+        get_spectogram_and_label_id, num_parallel_calls = AUTOTUNE)
+    return output_ds
+
 def main():
     nationalities = ['Australia', 'India', 'Norway', 'USA', 'Canada', 'Ireland', 'UK']
 
@@ -56,7 +64,12 @@ def main():
     train_files = filenames[:train_size]
     val_files = filenames[train_size: train_size + test_val_size]
     test_files = filenames[-test_val_size:]
-    import pdb; pdb.set_trace()
+
+    AUTOTUNE = tf.data.AUTOTUNE
+    files_ds = tf.data.Dataset.from_tensor_slices(train_files)
+
+    get_waveform_and_label = get_waveform_and_label(files_ds)
+    #waveform_ds = files_ds.map(get_waveform_and_label, num_parallel_calls=AUTOTUNE)
 
 
 
