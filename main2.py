@@ -19,7 +19,7 @@ np.random.seed(seed)
 data_dir = pathlib.Path('dataset')
 
 commands = np.array(tf.io.gfile.listdir(str(data_dir)))
-commands = commands[commands != 'README.md']
+commands = commands[commands != '.DS_Store']
 print('Commands:', commands)
 
 filenames = tf.io.gfile.glob(str(data_dir) + '/*/*/*/*')
@@ -47,7 +47,7 @@ print('Training set size', len(train_files))
 print('Validation set size', len(val_files))
 print('Test set size', len(test_files))
 
-SAMPLE_SELECTION = 600000
+SAMPLE_SELECTION = 16000
 
 
 def decode_audio(audio_binary):
@@ -64,7 +64,6 @@ def get_waveform_and_label(file_path):
     audio_binary = tf.io.read_file(file_path)
     waveform = decode_audio(audio_binary)
     return waveform, label
-
 
 AUTOTUNE = tf.data.AUTOTUNE
 files_ds = tf.data.Dataset.from_tensor_slices(train_files)
@@ -85,6 +84,21 @@ for i, (audio, label) in enumerate(waveform_ds.take(n)):
 
 #plt.show()
 
+#This function applies a mel filterbank to the spectrogram
+def transform_to_mel_spectogram(spectrogram, stft):
+    num_spectrogram_bins = stft.shape[-1]
+    lower_edge_hertz, upper_edge_hertz, num_mel_bins = 80.0, 7600.0, 80
+    linear_to_mel_weight_matrix = tf.signal.linear_to_mel_weight_matrix(
+        num_mel_bins, num_spectrogram_bins, 16000, lower_edge_hertz,
+        upper_edge_hertz)
+    mel_spectrograms = tf.tensordot(
+        spectrogram, linear_to_mel_weight_matrix, 1)
+    mel_spectrograms.set_shape(spectrogram.shape[:-1].concatenate(
+        linear_to_mel_weight_matrix.shape[-1:]))
+
+    # Compute a stabilized log to get log-magnitude mel-scale spectrograms.
+    log_mel_spectrograms = tf.math.log(mel_spectrograms + 1e-6)
+    return mel_spectrograms
 
 def get_spectrogram(waveform: tf.data.Dataset):
     # Padding for files with less than SAMPLE_SELECTION samples
@@ -94,22 +108,22 @@ def get_spectrogram(waveform: tf.data.Dataset):
     # same length
     waveform = tf.cast(waveform, tf.float32)
     equal_length = tf.concat([waveform, zero_padding], 0)
-    spectrogram = tf.signal.stft(
+    stft = tf.signal.stft(
         equal_length, frame_length=255, frame_step=128)
 
-    spectrogram = tf.abs(spectrogram)
 
-    return spectrogram
+    spectrogram = tf.abs(stft)
+
+    mel_spectrogram = transform_to_mel_spectogram(spectrogram, stft)
+
+    return mel_spectrogram
 
 
 for waveform, label in waveform_ds.take(1):
     label = label.numpy().decode('utf-8')
     spectrogram = get_spectrogram(waveform)
 
-print('Label:', label)
-print('Waveform shape:', waveform.shape)
-print('Spectrogram shape:', spectrogram.shape)
-print('Audio playback')
+
 display.display(display.Audio(waveform, rate=SAMPLE_SELECTION))
 
 
@@ -174,7 +188,7 @@ train_ds = spectrogram_ds
 val_ds = preprocess_dataset(val_files)
 test_ds = preprocess_dataset(test_files)
 
-batch_size = 64
+batch_size = 128
 train_ds = train_ds.batch(batch_size)
 val_ds = val_ds.batch(batch_size)
 
@@ -183,7 +197,7 @@ val_ds = val_ds.cache().prefetch(AUTOTUNE)
 
 for spectrogram, _ in spectrogram_ds.take(1):
     input_shape = spectrogram.shape
-print('Input shape:', input_shape)
+
 num_labels = len(commands)
 
 norm_layer = preprocessing.Normalization()
@@ -193,8 +207,8 @@ model = models.Sequential([
     layers.Input(shape=input_shape),
     preprocessing.Resizing(32, 32),
     norm_layer,
-    layers.Conv2D(32, 3, activation='relu'),
-    layers.Conv2D(64, 3, activation='relu'),
+    layers.Conv2D(16, 4, activation='relu'),
+    layers.Conv2D(32, 4, activation='relu'),
     layers.MaxPooling2D(),
     layers.Dropout(0.25),
     layers.Flatten(),
@@ -211,7 +225,7 @@ model.compile(
     metrics=['accuracy'],
 )
 
-EPOCHS = 20
+EPOCHS = 10
 history = model.fit(
     train_ds,
     validation_data=val_ds,
@@ -244,9 +258,9 @@ confusion_mtx = tf.math.confusion_matrix(y_true, y_pred)
 plt.figure(figsize=(10, 8))
 sns.heatmap(confusion_mtx, xticklabels=commands, yticklabels=commands,
             annot=True, fmt='g')
-#plt.xlabel('Prediction')
-#plt.ylabel('Label')
-#plt.show()
+plt.xlabel('Prediction')
+plt.ylabel('Label')
+plt.show()
 
 # sample_file = data_dir / 'no/01bb6a2a_nohash_0.wav'
 #
