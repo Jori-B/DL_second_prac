@@ -34,10 +34,9 @@ class nationality_checker:
             label ='USA'
         return label
 
-def decode_audio(audio_binary, speaker_id, nationality_per_id):
+def decode_audio(audio_binary, label):
     audio = tf.io.read_file(audio_binary)
     audio, _ = tf.audio.decode_wav(audio) # _ here means a throwable variable as we don't use it
-    label = nationality_per_id.get_nationality(speaker_id)
     return tf.squeeze(audio, axis=-1), label
 
 
@@ -112,10 +111,13 @@ def main():
     # get a list of all the folder names (f.path for path) in the directory specified in path
     list_subfolders_with_paths = [f.name for f in os.scandir(path_data) if f.is_dir()]
     for folder in list_subfolders_with_paths:
-        for filename in glob.iglob(f"{path_data}/{folder}" + '**/*.*', recursive=True):
-            print(filename)
-            list_of_files.append(filename)
-            labels.append(folder)
+        id_path = (f"{path_data}/{folder}")
+        list_ID_subfolders_with_paths = [f.name for f in os.scandir(id_path) if f.is_dir()]
+        for id in list_ID_subfolders_with_paths:
+            for filename in glob.iglob(f"{id_path}/{id}/**/*.*", recursive=True):
+                list_of_files.append(filename)
+                label = nationality_per_id.get_nationality(id)
+                labels.append(id)
 
     #file_train, file_test, label_train, label_test = train_test_split(list_of_files, labels, test_size=0.1)
     filenames = tf.constant(list_of_files)
@@ -132,9 +134,8 @@ def main():
     #labels_test = tf.constant(label_test)
 
     # creates the train dataset
-    #print(decode_audio(tf.io.read_file()filenames[1],"test"))
     dataset_train = tf.data.Dataset.from_tensor_slices((filenames, labels))
-    dataset_train = dataset_train.map(lambda audio, label: decode_audio(audio, label, nationality_per_id))
+    dataset_train = dataset_train.map(decode_audio)
     train_dataset = dataset_train.cache().shuffle(len(filenames)).batch(BATCH_SIZE).repeat()
     train_dataset = train_dataset.prefetch(buffer_size=1)
 
@@ -144,11 +145,11 @@ def main():
 #    predict =dataset_test.batch(1)
 #    test_dataset = dataset_test.cache().shuffle(len(file_test)).batch(BATCH_SIZE)
 #    train_datasetPredict = dataset_test.batch(32)
-    for image_batch, labels_batch in train_dataset:
+    for audio_batch, labels_batch in train_dataset:
         print(image_batch.shape)
         print(labels_batch.shape)
         break
-#    test_dataset = test_dataset.prefetch(buffer_size=8)
+    #test_dataset = test_dataset.prefetch(buffer_size=8)
 
 
     # calculates how many epoch are needed to run over the whole dataset
