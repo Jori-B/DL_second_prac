@@ -7,14 +7,16 @@ import tensorflow_hub as hub
 import os
 import glob
 import keras
-import sys
+from tensorflow.keras import layers
+from tensorflow.keras import models
+
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from timeit import default_timer as timer
 from os.path import expanduser
-
+from tensorflow.keras.layers.experimental import preprocessing as tfpreprocessing
 home = expanduser("~")
-path_data = f'{home}/Downloads/vox1_wav'
+path_data = f'{home}/Downloads/vox1_wav_split'
 path_csv = f'{home}/Downloads/'
 num_epoch = 1
 BATCH_SIZE = 1
@@ -27,6 +29,7 @@ class nationality_checker:
         except OSError:
             print("Could not open/read file vox1_meta.csv")
             sys.exit()
+        self.num_classes = self.data['Nationality'].nunique()
 
     def get_nationality(self, id):
         label = self.data.loc[self.data['VoxCeleb1_ID'] == id]['Nationality'].values[0]
@@ -34,10 +37,19 @@ class nationality_checker:
             label ='USA'
         return label
 
-def decode_audio(audio_binary, label):
-    audio = tf.io.read_file(audio_binary)
+
+def decode_audio(audio_file, label):
+    audio = tf.io.read_file(audio_file)
     audio, _ = tf.audio.decode_wav(audio) # _ here means a throwable variable as we don't use it
-    return tf.squeeze(audio, axis=-1), label
+    waveform = tf.cast(audio, tf.float32)
+    audio_squeezed = tf.squeeze(waveform, axis=-1)
+    equal_length = tf.concat([audio_squeezed], 0)
+    spectrogram = tf.signal.stft(equal_length, frame_length=255, frame_step=128)
+    spectrogram = tf.abs(spectrogram)
+    spectrogram = tf.expand_dims(spectrogram, -1)
+
+
+    return spectrogram, label
 
 
 
@@ -105,6 +117,7 @@ def prediction(model, image_batch, model_num, label_trans):
 
 
 def main():
+    #get number of classes
     nationality_per_id = nationality_checker(path_csv)
     list_of_files = []
     labels = []
@@ -114,13 +127,14 @@ def main():
         id_path = (f"{path_data}/{folder}")
         list_ID_subfolders_with_paths = [f.name for f in os.scandir(id_path) if f.is_dir()]
         for id in list_ID_subfolders_with_paths:
-            for filename in glob.iglob(f"{id_path}/{id}/**/*.*", recursive=True):
+            for filename in glob.iglob(f"{id_path}/{id}/*.*", recursive=True):
                 list_of_files.append(filename)
                 label = nationality_per_id.get_nationality(id)
                 labels.append(id)
 
     #file_train, file_test, label_train, label_test = train_test_split(list_of_files, labels, test_size=0.1)
     filenames = tf.constant(list_of_files)
+    print(filenames)
 
 
     label_trans = label_encoder.fit(labels)  # fit a transformer that transforms label strings to numerical
@@ -145,10 +159,7 @@ def main():
 #    predict =dataset_test.batch(1)
 #    test_dataset = dataset_test.cache().shuffle(len(file_test)).batch(BATCH_SIZE)
 #    train_datasetPredict = dataset_test.batch(32)
-    for audio_batch, labels_batch in train_dataset:
-        print(image_batch.shape)
-        print(labels_batch.shape)
-        break
+
     #test_dataset = test_dataset.prefetch(buffer_size=8)
 
 
@@ -194,7 +205,27 @@ def main():
 
 #    compression_opts = dict(method='zip', archive_name='out1.csv')
 #    df.to_csv('out1.zip', index=False,compression=compression_opts)
+#    for spectrogram, _ in train_dataset.take(1):
+#        input_shape = spectrogram.shape
+#    print(input_shape)
+#    norm_layer = tfpreprocessing.Normalization()
+#    #norm_layer.adapt(train_dataset.map(lambda x, _: x))
 
+#    model = models.Sequential([
+#        layers.Input(shape=input_shape),
+#        layers.Conv2D(32, 3, activation='relu'),
+#        layers.Conv2D(64, 3, activation='relu'),
+#        layers.MaxPooling2D(),
+#        layers.Dropout(0.25),
+#        layers.Flatten(),
+#        layers.Dense(128, activation='relu'),
+#        layers.Dropout(0.5),
+#        layers.Dense(nationality_per_id.num_classes),
+#        ])
+
+#    model.summary()
+
+        #layers.Dropout(0.25),
 
 
 

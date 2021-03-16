@@ -22,6 +22,7 @@ path_copy = f'{home}/Downloads/vox1_wav_split'
 chunk_length_ms = 500
 
 def main():
+    print(path_copy)
     list_subfolders_with_paths = [f.name for f in os.scandir(path_data) if f.is_dir()]
     for folder in list_subfolders_with_paths:
         id_path = (f"{path_data}/{folder}")
@@ -31,11 +32,12 @@ def main():
                 wav_file = AudioSegment.from_file(filename)
                 chunks = make_chunks(wav_file, chunk_length_ms) #Make chunks of one sec
                 for i, chunk in enumerate(chunks):
-                    silence = AudioSegment.silent(duration=chunk_length_ms-len(wav_file)+1)
+                    silence = AudioSegment.silent(duration=chunk_length_ms-len(chunk)+1)
                     chunk_padded = chunk + silence
-                    if not os.path.exists(f"{path_copy}/{id_path}/{id}"):
-                        os.makedirs(f"{path_copy}/{id_path}/{id}")
-                    chunk_padded.export(f"{path_copy}/{id_path}/{id}/wav_file{i}", format="wav")
+                    #print(f"{path_copy}/{id_path}/{id}")
+                    if not os.path.exists(f"{path_copy}/{folder}/{id}"):
+                        os.makedirs(f"{path_copy}/{folder}/{id}")
+                    chunk_padded.export(f"{path_copy}/{folder}/{id}/wav_file{i}.wav", format="wav")
 
 
 
