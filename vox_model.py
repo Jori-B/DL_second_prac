@@ -18,8 +18,8 @@ from tensorflow.keras.layers.experimental import preprocessing as tfpreprocessin
 home = expanduser("~")
 path_data = f'{home}/Downloads/vox1_wav_split'
 path_csv = f'{home}/Downloads/'
-num_epoch = 1
-BATCH_SIZE = 1
+num_epoch = 100
+BATCH_SIZE = 10
 label_encoder = preprocessing.LabelEncoder()
 
 class nationality_checker:
@@ -40,17 +40,51 @@ class nationality_checker:
 
 def decode_audio(audio_file, label):
     audio = tf.io.read_file(audio_file)
+    #print(audio.shape)
+    #print(audio)
     audio, _ = tf.audio.decode_wav(audio) # _ here means a throwable variable as we don't use it
+    #print(audio.shape)
+    #print(audio)
     waveform = tf.cast(audio, tf.float32)
+    #print(waveform.shape)
+    #print(waveform)
     audio_squeezed = tf.squeeze(waveform, axis=-1)
+    #print(audio_squeezed.shape)
+    #print(audio_squeezed)
     equal_length = tf.concat([audio_squeezed], 0)
+    #print(equal_length.shape)
+    #print(equal_length)
     spectrogram = tf.signal.stft(equal_length, frame_length=255, frame_step=128)
+    #print(spectrogram.shape)
+    #print(spectrogram)
     spectrogram = tf.abs(spectrogram)
+    #print(spectrogram.shape)
+    #print(spectrogram)
     spectrogram = tf.expand_dims(spectrogram, -1)
+    #print(spectrogram.shape)
+    #print(spectrogram)
 
 
     return spectrogram, label
 
+
+def audio_file_to_tensor(file, label):
+    def _audio_file_to_tensor(file, label):
+        path = f"{file.numpy().decode()}"
+        audio, _ = tf.audio.decode_wav(tf.io.read_file(path))
+        waveform = tf.cast(audio, tf.float32)
+        audio_squeezed = tf.squeeze(waveform, axis=-1)
+        spectrogram = tf.signal.stft(audio_squeezed, frame_length=255, frame_step=128)
+        spectrogram = tf.abs(spectrogram)
+        spectrogram = tf.expand_dims(spectrogram, -1)
+        return spectrogram, label
+
+    file, label = tf.py_function(_audio_file_to_tensor,
+                                 inp=(file, label),
+                                 Tout=(tf.float32, tf.int64))
+    file.set_shape([61, 129, 1])
+    label.set_shape([])
+    return (file, label)
 
 
 
@@ -60,8 +94,8 @@ class callback(keras.callbacks.Callback):
         self.time = []
         self.acc = []
         self.loss = []
-        self.val_loss = []
-        self.val_acc = []
+        #self.val_loss = []
+        #self.val_acc = []
 
     def on_epoch_begin(self, epoch, logs={}):
         self.starttime = timer()
@@ -71,8 +105,8 @@ class callback(keras.callbacks.Callback):
         self.time.append(timer() - self.starttime)
         self.acc.append(logs['acc'])
         self.loss.append(logs['loss'])
-        self.val_loss.append(logs['val_loss'])
-        self.val_acc.append(logs['val_acc'])
+        #self.val_loss.append(logs['val_loss'])
+        #self.val_acc.append(logs['val_acc'])
 
 
 
@@ -130,16 +164,19 @@ def main():
             for filename in glob.iglob(f"{id_path}/{id}/*.*", recursive=True):
                 list_of_files.append(filename)
                 label = nationality_per_id.get_nationality(id)
-                labels.append(id)
+                labels.append(label)
 
-    #file_train, file_test, label_train, label_test = train_test_split(list_of_files, labels, test_size=0.1)
-    filenames = tf.constant(list_of_files)
-    print(filenames)
+    file_train, file_test, label_train, label_test = train_test_split(list_of_files, labels, test_size=0.5)
+    filenames_train = tf.constant(file_train)
+    filenames_test = tf.constant(file_test)
+    #print(filenames)
+    #print(list_of_files)
 
 
     label_trans = label_encoder.fit(labels)  # fit a transformer that transforms label strings to numerical
-    labels = label_trans.transform(labels)  # transforms label train into numerical
-    #label_test = label_trans.transform(label_test)  # transforms label test into numerical
+    label_train = label_trans.transform(label_train)  # transforms label train into numerical
+
+    label_test = label_trans.transform(label_test)  # transforms label test into numerical
 
     # set all the data to tensorflow constants
     #filenames_train = tf.constant(file_train)
@@ -148,23 +185,27 @@ def main():
     #labels_test = tf.constant(label_test)
 
     # creates the train dataset
-    dataset_train = tf.data.Dataset.from_tensor_slices((filenames, labels))
-    dataset_train = dataset_train.map(decode_audio)
-    train_dataset = dataset_train.cache().shuffle(len(filenames)).batch(BATCH_SIZE).repeat()
-    train_dataset = train_dataset.prefetch(buffer_size=1)
+    dataset_train = tf.data.Dataset.from_tensor_slices((filenames_train, label_train))
+    dataset_train = dataset_train.map(audio_file_to_tensor)
+    train_dataset = dataset_train.cache().shuffle(len(filenames_train)).batch(BATCH_SIZE).repeat()
+    train_dataset = train_dataset.prefetch(buffer_size=100)
+    print("taking one")
+    print(train_dataset)
+    for spectrogram, _ in train_dataset.take(1):
+        input_shape = spectrogram.shape
 
     # creates the test dataset
-#    dataset_test = tf.data.Dataset.from_tensor_slices((filenames_test, labels_test))
-#    dataset_test = dataset_test.map(im_file_to_tensor)
-#    predict =dataset_test.batch(1)
-#    test_dataset = dataset_test.cache().shuffle(len(file_test)).batch(BATCH_SIZE)
-#    train_datasetPredict = dataset_test.batch(32)
+    dataset_test = tf.data.Dataset.from_tensor_slices((filenames_test, label_test))
+    dataset_test = dataset_test.map(audio_file_to_tensor)
+    predict =dataset_test.batch(1)
+    test_dataset = dataset_test.cache().shuffle(len(file_test)).batch(BATCH_SIZE)
+    train_datasetPredict = dataset_test.batch(32)
 
-    #test_dataset = test_dataset.prefetch(buffer_size=8)
+    test_dataset = test_dataset.prefetch(buffer_size=8)
 
 
     # calculates how many epoch are needed to run over the whole dataset
-#    STEPS_PER_EPOCH = len(file_train)/BATCH_SIZE
+    STEPS_PER_EPOCH = len(file_train)/BATCH_SIZE
 #    cb1 = callback()
 
 
@@ -210,24 +251,33 @@ def main():
 #    print(input_shape)
 #    norm_layer = tfpreprocessing.Normalization()
 #    #norm_layer.adapt(train_dataset.map(lambda x, _: x))
+    cb = callback()
+    #print(nationality_per_id.num_classes)
+    input_shape = [61, 129, 1]
+    model = models.Sequential([
+        layers.Input(shape=input_shape),
+        layers.Conv2D(32, 3, activation='relu'),
+        layers.Conv2D(16, 3, activation='relu'),
+        layers.MaxPooling2D(),
+        layers.Flatten(),
+        layers.Dense(12, activation='relu'),
+        layers.Dense(nationality_per_id.num_classes),
+        ])
 
-#    model = models.Sequential([
-#        layers.Input(shape=input_shape),
-#        layers.Conv2D(32, 3, activation='relu'),
-#        layers.Conv2D(64, 3, activation='relu'),
-#        layers.MaxPooling2D(),
-#        layers.Dropout(0.25),
-#        layers.Flatten(),
-#        layers.Dense(128, activation='relu'),
-#        layers.Dropout(0.5),
-#        layers.Dense(nationality_per_id.num_classes),
-#        ])
-
-#    model.summary()
+    model.summary()
 
         #layers.Dropout(0.25),
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(),
+        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+        metrics=['acc'],
+    )
 
-
+#    print("model 1 ##############################################################################################################")
+#    model.summary()
+    history = model.fit(train_dataset, epochs=num_epoch, steps_per_epoch=STEPS_PER_EPOCH,
+                          callbacks=[cb],
+                          validation_data=test_dataset)
 
 if __name__ == "__main__":
     main()

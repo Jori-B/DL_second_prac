@@ -16,10 +16,10 @@ from timeit import default_timer as timer
 from os.path import expanduser
 
 home = expanduser("~")
-path_data = f'{home}/Downloads/vox1_wav'
-path_copy = f'{home}/Downloads/vox1_wav_split'
+path_data = f'{home}/Downloads/vox1_dev_wav/wav'
+path_copy = f'{home}/Downloads/vox1_dev_wav_split'
 
-chunk_length_ms = 500
+chunk_length_ms = 1000
 
 def main():
     print(path_copy)
