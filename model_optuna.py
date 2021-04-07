@@ -100,11 +100,11 @@ def get_spectrogram(waveform):
     # same length
     waveform = tf.cast(waveform, tf.float32)
     equal_length = tf.concat([waveform, zero_padding], 0)
-    spectrogram = tf.signal.stft(
+    stft = tf.signal.stft(
         equal_length, frame_length=255, frame_step=128)
 
-    spectrogram = tf.abs(spectrogram)
-    spectrogram = transform_to_mel_spectogram(spectrogram, spectrogram)
+    spectrogram = tf.abs(stft)
+    spectrogram = transform_to_mel_spectogram(spectrogram, stft)
 
     return spectrogram
 
