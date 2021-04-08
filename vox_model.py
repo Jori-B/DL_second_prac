@@ -365,6 +365,51 @@ def main():
         layers.Dense(12, activation='relu'),
         layers.Dense(2),
     ])
+    
+    
+    # Copy weights from model 1 to model 2:
+    # base_layers = [
+    #     layers.Input(shape=input_shape),
+    #     layers.Conv2D(32, 3, activation='relu'),
+    #     layers.Conv2D(32, 3, activation='relu'),
+    #     layers.Conv2D(32, 3, activation='relu'),
+    #     layers.MaxPooling2D(),
+    #     layers.Flatten(),
+    #     layers.Dense(48, activation='relu'),
+    #     layers.Dropout(0.2),
+    #     layers.Dense(12, activation='relu'),
+    #     layers.Dense(12, activation='relu'),
+    #     layers.Dense(12, activation='relu'),
+    # ]
+    # 
+    # model = models.Sequential(base_layers)
+    # model.add(layers.Dense(2))
+    # model.summary()
+    # 
+    # model.compile(
+    #     optimizer=tf.keras.optimizers.Adam(),
+    #     loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+    #     metrics=['acc'],
+    # )
+    # 
+    # model2 = models.Sequential(base_layers)
+    # model2.add(layers.Dense(nationality_per_id.num_classes))
+    # 
+    # layer_count = len(model.layers)
+    # for idx, layer in enumerate(model.layers):
+    #     if idx == layer_count - 1:
+    #         break
+    #     model2.get_layer(index=idx).set_weights(layer.get_weights())
+    # 
+    # model2.summary()
+    # 
+    # model2.compile(
+    #     optimizer=tf.keras.optimizers.Adam(),
+    #     loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+    #     metrics=['acc'],
+    # )
+    # 
+    # model2.summary()
 
 
 
