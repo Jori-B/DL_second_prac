@@ -24,9 +24,12 @@ np.random.seed(seed)
 
 DATA_DIR = "data/dataset_split_2"
 output_path = "output6"
-SAMPLE_SELECTION = 20000  # 5 sec
+SAMPLE_SELECTION = 80000  # 5 sec
 BATCH_SIZE = 64
-EPOCHS = 10
+EPOCHS = 14
+
+if not os.path.isdir(output_path):
+    os.makedirs(output_path)
 
 USE_MEL_LOG_SPECTROGRAM = True
 AUTO_TUNE = tf.data.experimental.AUTOTUNE
@@ -172,9 +175,7 @@ def define_model(input_shape, ds_train, num_labels, layer_sizes: List[int], drop
     decay_rate=0.9)
 
     model.compile(
-        #optimizer=tf.keras.optimizers.Adam(),
         optimizer = tf.keras.optimizers.SGD(learning_rate=lr_schedule),
-        #loss = tf.keras.losses.KLDivergence(),
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=['accuracy']
     )
@@ -187,7 +188,7 @@ def run_model(model, train_ds, val_ds, test_ds, run: int):
         verbose=1,
         validation_data=val_ds,
         epochs=EPOCHS,
-        callbacks=tf.keras.callbacks.EarlyStopping(verbose=1, patience=16),
+        callbacks=tf.keras.callbacks.EarlyStopping(verbose=1, patience=4),
     )
 
     model.save(output_path + "/{}".format(run))
