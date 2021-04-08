@@ -9,16 +9,20 @@ import glob
 import keras
 from tensorflow.keras import layers
 from tensorflow.keras import models
+from tensorflow.keras.models import Model
 
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
 from timeit import default_timer as timer
 from os.path import expanduser
 from tensorflow.keras.layers.experimental import preprocessing as tfpreprocessing
+from tensorflow.keras.layers import Dense, Input, Layer
 home = expanduser("~")
-path_data = f'{home}/Downloads/vox1_wav_split'
+path_data_train = f'{home}/Downloads/dataset_split_2/train'
+path_data_test = f'{home}/Downloads/dataset_split_2/test'
+path_data_validate = f'{home}/Downloads/dataset_split_2/validate'
 path_csv = f'{home}/Downloads/'
-num_epoch = 100
+num_epoch = 50
 BATCH_SIZE = 10
 label_encoder = preprocessing.LabelEncoder()
 
@@ -34,7 +38,7 @@ class nationality_checker:
     def get_nationality(self, id):
         label = self.data.loc[self.data['VoxCeleb1_ID'] == id]['Nationality'].values[0]
         if not(label):
-            label ='USA'
+            label ='m'
         return label
 
 
@@ -70,19 +74,24 @@ def decode_audio(audio_file, label):
 
 def audio_file_to_tensor(file, label):
     def _audio_file_to_tensor(file, label):
+        SAMPLE_SELECTION = 80000
         path = f"{file.numpy().decode()}"
-        audio, _ = tf.audio.decode_wav(tf.io.read_file(path))
+        audio, _ = tf.audio.decode_wav(tf.io.read_file(path),desired_samples=SAMPLE_SELECTION)
         waveform = tf.cast(audio, tf.float32)
-        audio_squeezed = tf.squeeze(waveform, axis=-1)
+        squeezed = tf.squeeze(waveform, axis=-1)
+        padded = tf.zeros([SAMPLE_SELECTION] - tf.shape(squeezed),dtype=tf.float32)
+        audio_squeezed = tf.concat([squeezed,padded],0)
         spectrogram = tf.signal.stft(audio_squeezed, frame_length=255, frame_step=128)
         spectrogram = tf.abs(spectrogram)
         spectrogram = tf.expand_dims(spectrogram, -1)
         return spectrogram, label
 
+
+
     file, label = tf.py_function(_audio_file_to_tensor,
                                  inp=(file, label),
                                  Tout=(tf.float32, tf.int64))
-    file.set_shape([124, 129, 1])
+    file.set_shape([624, 129,1])
     label.set_shape([])
     return (file, label)
 
@@ -110,6 +119,8 @@ class callback(keras.callbacks.Callback):
 
 
 
+
+
 # https://machinelearningmastery.com/display-deep-learning-model-training-history-in-keras/
 def printHistory(history, model_num):
     # list all data in history
@@ -133,79 +144,86 @@ def printHistory(history, model_num):
     #plt.show()
     plt.savefig(f"model_loss_model{model_num}.png")
 
-def prediction(model, image_batch, model_num, label_trans):
-    predicted_batch = model.predict(image_batch)
-    predicted_id = np.argmax(predicted_batch, axis=-1)
-    predicted_label_batch = label_trans.inverse_transform(predicted_id)
-
-    plt.figure(figsize=(10, 9))
-    plt.subplots_adjust(hspace=0.5)
-    for n in range(30):
-       plt.subplot(6, 5, n + 1)
-       plt.imshow(image_batch[n])
-       plt.title(predicted_label_batch[n].title())
-       plt.axis('off')
-    _ = plt.suptitle("Model predictions")
-    #plt.show()
-    plt.savefig(f"predicted_images_model{model_num}.png")
-
 
 def main():
     #get number of classes
+###############################################################################################################################33
     nationality_per_id = nationality_checker(path_csv)
     list_of_files = []
     labels = []
     # get a list of all the folder names (f.path for path) in the directory specified in path
-    list_subfolders_with_paths = [f.name for f in os.scandir(path_data) if f.is_dir()]
+    list_subfolders_with_paths = [f.name for f in os.scandir(path_data_train) if f.is_dir()]
     for folder in list_subfolders_with_paths:
-        id_path = (f"{path_data}/{folder}")
+        #print(folder)
+        id_path = (f"{path_data_train}/{folder}")
         list_ID_subfolders_with_paths = [f.name for f in os.scandir(id_path) if f.is_dir()]
         for id in list_ID_subfolders_with_paths:
-            for filename in glob.iglob(f"{id_path}/{id}/*.*", recursive=True):
-                list_of_files.append(filename)
-                label = nationality_per_id.get_nationality(id)
-                labels.append(label)
+        #    print(id)
+            code_path = (f"{path_data_train}/{folder}/{id}")
+            #print(code_path)
+            list_CODE_subfolders_with_paths = [f.name for f in os.scandir(code_path) if f.is_dir()]
+            #print(list_CODE_subfolders_with_paths)
+            for code in list_CODE_subfolders_with_paths:
+                #print(code)
+                for filename in glob.iglob(f"{id_path}/{id}/{code}/*.*", recursive=True):
+                    #print(filename)
+                    list_of_files.append(filename)
+                    label = nationality_per_id.get_nationality(id)
+                    labels.append(label)
+    #print(list_of_files)
+    label_trans_train = label_encoder.fit(labels)  # fit a transformer that transforms label strings to numerical
+    label_train = label_trans_train.transform(labels)
+    dataset_train = tf.data.Dataset.from_tensor_slices((list_of_files, label_train))
+    dataset_train = dataset_train.map(audio_file_to_tensor)
+    train_dataset = dataset_train.cache().shuffle(len(list_of_files)).batch(BATCH_SIZE).repeat()
+    train_dataset = train_dataset.prefetch(buffer_size=10)
+    STEPS_PER_EPOCH = len(list_of_files)/BATCH_SIZE
 
-    file_train, file_test, label_train, label_test = train_test_split(list_of_files, labels, test_size=0.5)
-    filenames_train = tf.constant(file_train)
-    filenames_test = tf.constant(file_test)
+
+##################################################################################################################################
+    list_of_files_test = []
+    labels = []
+
+    # get a list of all the folder names (f.path for path) in the directory specified in path
+    list_subfolders_with_paths = [f.name for f in os.scandir(path_data_test) if f.is_dir()]
+    for folder in list_subfolders_with_paths:
+        #print(folder)
+        id_path = (f"{path_data_train}/{folder}")
+        list_ID_subfolders_with_paths = [f.name for f in os.scandir(id_path) if f.is_dir()]
+        for id in list_ID_subfolders_with_paths:
+        #    print(id)
+            code_path = (f"{path_data_train}/{folder}/{id}")
+            #print(code_path)
+            list_CODE_subfolders_with_paths = [f.name for f in os.scandir(code_path) if f.is_dir()]
+            #print(list_CODE_subfolders_with_paths)
+            for code in list_CODE_subfolders_with_paths:
+                #print(code)
+                for filename in glob.iglob(f"{id_path}/{id}/{code}/*.*", recursive=True):
+                    #print(filename)
+                    list_of_files_test.append(filename)
+                    label = nationality_per_id.get_nationality(id)
+                    labels.append(label)
+    #print(list_of_files)
+    label_trans_test = label_encoder.fit(labels)  # fit a transformer that transforms label strings to numerical
+    label_test = label_trans_test.transform(labels)
+    dataset_test = tf.data.Dataset.from_tensor_slices((list_of_files_test, label_test))
+    dataset_test = dataset_test.map(audio_file_to_tensor)
+    test_dataset = dataset_test.cache().shuffle(len(list_of_files_test)).batch(BATCH_SIZE)
+    test_dataset = test_dataset.prefetch(buffer_size=10)
+
+
+######################################################################################################################################
+
+
+
+####################################################################################################################################################
     #print(filenames)
     #print(list_of_files)
 
 
-    label_trans = label_encoder.fit(labels)  # fit a transformer that transforms label strings to numerical
-    label_train = label_trans.transform(label_train)  # transforms label train into numerical
-
-    label_test = label_trans.transform(label_test)  # transforms label test into numerical
-
-    # set all the data to tensorflow constants
-    #filenames_train = tf.constant(file_train)
-    #labels_train = tf.constant(label_train)
-    #filenames_test = tf.constant(file_test)
-    #labels_test = tf.constant(label_test)
-
-    # creates the train dataset
-    dataset_train = tf.data.Dataset.from_tensor_slices((filenames_train, label_train))
-    dataset_train = dataset_train.map(audio_file_to_tensor)
-    train_dataset = dataset_train.cache().shuffle(len(filenames_train)).batch(BATCH_SIZE).repeat()
-    train_dataset = train_dataset.prefetch(buffer_size=100)
-    print("taking one")
-    print(train_dataset)
-    for spectrogram, _ in train_dataset.take(1):
-        input_shape = spectrogram.shape
-
-    # creates the test dataset
-    dataset_test = tf.data.Dataset.from_tensor_slices((filenames_test, label_test))
-    dataset_test = dataset_test.map(audio_file_to_tensor)
-    predict =dataset_test.batch(1)
-    test_dataset = dataset_test.cache().shuffle(len(file_test)).batch(BATCH_SIZE)
-    train_datasetPredict = dataset_test.batch(32)
-
-    test_dataset = test_dataset.prefetch(buffer_size=8)
-
 
     # calculates how many epoch are needed to run over the whole dataset
-    STEPS_PER_EPOCH = len(file_train)/BATCH_SIZE
+
 #    cb1 = callback()
 
 
@@ -252,39 +270,165 @@ def main():
 #    norm_layer = tfpreprocessing.Normalization()
 #    #norm_layer.adapt(train_dataset.map(lambda x, _: x))
     cb = callback()
+    checkpoint_path_save = "training_2/cp.ckpt"
+    checkpoint_dir = os.path.dirname(checkpoint_path_save)
+
+# Create a callback that saves the model's weights
+    save_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path_save,
+                                                 save_weights_only=True,
+                                                 verbose=1)
+
     #print(nationality_per_id.num_classes)
-    input_shape = [124, 129, 1]
-    stddev = 5
+    input_shape = [624,129,1]
+    #stddev = 5
+    #model = models.Sequential([
+    #    layers.Input(shape=input_shape),
+    #    layers.GaussianNoise(stddev),
+    #    layers.Conv2D(64, 4, activation='relu'),
+    #    layers.Conv2D(64, 4, activation='relu'),
+    #    layers.Conv2D(64, 4, activation='relu'),
+    #    layers.Conv2D(64, 4, activation='relu'),
+    #    layers.Conv2D(64, 4, activation='relu'),
+    #    layers.Conv2D(64, 4, activation='relu'),
+    #    layers.MaxPooling2D(),
+    #    layers.Flatten(),
+    #    layers.Dense(512, activation='relu'),
+    #    layers.Dropout(0.2),
+    #    layers.Dense(512, activation='relu'),
+    #    layers.Dense(512, activation='relu'),
+    #    layers.Dense(512, activation='relu'),
+    #    layers.Dense(512, activation='relu'),
+    #    layers.Dense(512, activation='relu'),
+    #    layers.Dense(512, activation='relu'),
+    #    layers.Dense(512, activation='relu'),
+    #    layers.Dense(nationality_per_id.num_classes),
+    #    ])
+
+    #model.summary()
+    checkpoint_path = "training_1/cp.ckpt"
+
     model = models.Sequential([
         layers.Input(shape=input_shape),
-        layers.GaussianNoise(stddev),
+        layers.Conv2D(32, 3, activation='relu'),
         layers.Conv2D(32, 3, activation='relu'),
         layers.Conv2D(16, 3, activation='relu'),
         layers.MaxPooling2D(),
         layers.Flatten(),
-        layers.Dense(12, activation='relu'),
+        layers.Dense(32, activation='relu'),
         layers.Dropout(0.2),
         layers.Dense(12, activation='relu'),
-        layers.Dropout(0.2),
         layers.Dense(12, activation='relu'),
-        layers.Dropout(0.2),
+        layers.Dense(12, activation='relu'),
         layers.Dense(nationality_per_id.num_classes),
-        ])
+    ])
 
-    model.summary()
+
+
+
 
         #layers.Dropout(0.25),
+    #x = model.layers[-1].output
+    #feature_extractor_layer = hub.KerasLayer(
+            # trainable = False freezes the variables in feature extractor layer,
+            # so that the training only modifies the new classifier layer.
+    #        x, trainable=False)
+
+
+        # Attach a classification head
+
+        # Now wrap the hub layer in a tf.keras.Sequential model
+    #model = tf.keras.Sequential([
+    #    feature_extractor_layer,
+    #    tf.keras.layers.Dense(num_classes)  # add a new classification layer.
+    #])
+
+
+
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),
         loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
         metrics=['acc'],
     )
+    #model.load_weights(checkpoint_path)
 
-#    print("model 1 ##############################################################################################################")
-#    model.summary()
+
+    #input_tensor = Input(shape=input_shape)
+    #hidden = model.layers[-2].output
+    #model2 = models.Sequential([
+    #    layers.Input(shape=input_shape),
+        #hidden,
+        #layers.Dense(nationality_per_id.num_classes),
+
+    #])
+    #input = layers.Input(shape=input_shape, name="input")
+
+    #hidden =  Dense(120, activation='relu')(model.layers[-2].output)
+    #out = Dense(nationality_per_id.num_classes)(hidden)
+#    model2 = Model(input,out)
+#    model2 = Model(input, out)
+
+
+
+
+    #model_no_output = hub.KerasLayer(model_no_output,trainable=False)
+    #model_new_output = tf.keras.Sequential([
+    #    model_no_output,
+    #    tf.keras.layers.Dense(num_classes)  # add a new classification layer.
+    #])
+
+#    model2.compile(
+#        optimizer=tf.keras.optimizers.Adam(),
+#        loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+#        metrics=['acc'],
+#    )
+
+
+    #model = hub.load('https://tfhub.dev/google/vggish/1')
+    #feature_extractor_layer = hub.KerasLayer(
+        # trainable = False freezes the variables in feature extractor layer,
+        # so that the training only modifies the new classifier layer.
+    #    model, input_shape=input_shape, trainable=False)
+    # Attach a classification head
+
+
+    # Now wrap the hub layer in a tf.keras.Sequential model
+    #model = tf.keras.Sequential([
+    #    feature_extractor_layer,
+    #    tf.keras.layers.Dense(nationality_per_id.num_classes)  # add a new classification layer.
+    #])
+    #waveform = np.zeros(3 * 16000, dtype=np.float32)
+
+# Run the model, check the output.
+#    embeddings = model(waveform)
+#    embeddings.shape.assert_is_compatible_with([None, 128])
+    #model = models.Sequential([
+    #    layers.Input(shape=input_shape),
+    #    layers.Conv2D(96, (7,7), strides=(1), activation='relu'),
+    #    layers.MaxPooling2D(3),
+    #    layers.Conv2D(256, (5,5), strides=(1), activation='relu'),
+    #    layers.MaxPooling2D(2),
+    #    layers.Conv2D(384, (3,3), strides=(1), activation='relu'),
+    #    layers.Conv2D(256, (3,3), strides=(1), activation='relu'),
+    #    layers.Conv2D(256, (3,3), strides=(1), activation='relu'),
+    #    layers.Dense(4096, activation='relu'),
+    #    layers.GlobalAveragePooling2D(),
+    #    layers.Dense(1024, activation='relu'),
+    #    layers.Dense(nationality_per_id.num_classes),
+    #])
+    #model.compile(
+    #    optimizer=tf.keras.optimizers.Adam(),
+    #    loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+    ##    metrics=['acc'],
+    #)
+
+
+    print("model 1 ##############################################################################################################")
+    model.summary()
     history = model.fit(train_dataset, epochs=num_epoch, steps_per_epoch=STEPS_PER_EPOCH,
-                          callbacks=[cb],
+                          callbacks=[cb,save_callback],
                           validation_data=test_dataset)
+    printHistory(history, 1)
+
 
 if __name__ == "__main__":
     main()
