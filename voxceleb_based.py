@@ -28,6 +28,9 @@ SAMPLE_SELECTION = 80000  # 5 sec
 BATCH_SIZE = 64
 EPOCHS = 32
 
+if not os.path.isdir(output_path):
+    os.makedirs(output_path)
+
 USE_MEL_LOG_SPECTROGRAM = True
 AUTO_TUNE = tf.data.experimental.AUTOTUNE
 
