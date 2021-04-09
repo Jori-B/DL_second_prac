@@ -19,7 +19,7 @@ home = expanduser("~")
 path_data = f'{home}/Downloads/vox1_wav'
 path_copy = f'{home}/Downloads/vox1_wav_split'
 
-chunk_length_ms = 500
+chunk_length_ms = 5000
 
 def main():
     list_subfolders_with_paths = [f.name for f in os.scandir(path_data) if f.is_dir()]
