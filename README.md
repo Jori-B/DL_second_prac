@@ -10,7 +10,7 @@ In order to run the code, unzip this dataset and the following experiments can b
 1. In order to run the Optuna based method, run python optuna_based.py
 2. In order to run the VoxCeleb based method, run python voxceleb_based.py
 3. In order to run the AlexNet based method run python AlexNet.py
-4.  
+4. In order to run the pretrained network, first run gender.py and then run pretrained.py
 
 gender.py creates weights trained on gender. Pretrained.py loads these weights and uses
 these pre-trained weights.
