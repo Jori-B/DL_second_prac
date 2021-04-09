@@ -22,6 +22,9 @@ output_path = "output"
 SAMPLE_SELECTION = 80000  # 5 sec
 BATCH_SIZE = 32
 
+if not os.path.isdir(output_path):
+    os.makedirs(output_path)
+
 AUTO_TUNE = tf.data.experimental.AUTOTUNE
 
 

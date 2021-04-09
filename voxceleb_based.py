@@ -28,6 +28,9 @@ SAMPLE_SELECTION = 80000  # 5 sec
 BATCH_SIZE = 64
 EPOCHS = 32
 
+if not os.path.isdir(output_path):
+    os.makedirs(output_path)
+
 USE_MEL_LOG_SPECTROGRAM = True
 AUTO_TUNE = tf.data.experimental.AUTOTUNE
 
@@ -152,6 +155,7 @@ def define_model(input_shape, ds_train, num_labels):
         layers.Conv2D(384, (3, 3), strides=(1, 1), activation='relu'),
         layers.Conv2D(256, (3, 3), strides=(1, 1), activation='relu'),
         layers.Conv2D(256, (3, 3), strides=(1, 1), activation='relu'),
+        layers.MaxPooling2D((3,2)),
         layers.Dense(4096, activation='relu'),
         layers.GlobalAveragePooling2D(),
         layers.Dense(1024, activation='relu'),
